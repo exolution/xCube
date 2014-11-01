@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+  <title></title>
+  <script src="xcube.js"></script>
+  <style>
+    li{
+      margin:20px;
+    }
+  </style>
+</head>
+<body>
+<div xc-controller="Ctrl">
+  <div>{{a.val}}+{{a.b}}*2={{b.val+b.c*2+' xxxx'|html|caps}}--{{abc}}</div>
+  {{abc}}
+  <div>{{cc}}</div>
+  <div xc-debug-1>{{a.c}}</div>
+  <ul>
+    <li id="abc" xc-repeat="el in a.list">
+      <div>{{el.abc}}</div>
+      <div xc-repeat="key:val in el.list2" xc-debug-2>{{key}},{{$index}},{{val|json}}{{$first}}</div>
+      <div>{{el.list2|json}}</div>
+      <div xc-repeat="key:val in el.list2" ><span >{{key}},{{val.d}},{{$last}}</span></div>
+      <div>{{el.x.b}}</div>
+    </li>
+    <li class="last">end</li>
+
+  </ul>
+  <ul>
+    <li xc-repeat="el in set">
+      <div xc-repeat="e in el">{{e}}</div>
+    </li>
+  </ul>
+  <div xc-controller="child">{{xx}}</div>
+</div>
+</body>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    console.log('===================================');
+    debugger;
+    _viewModels.Ctrl.a.list=[{list2:[{d:1},{d:2},{d:3}],x:{b:2},abc:1111,middle:{b:1}},{list2:[{d:11},{d:22},{d:33}],x:{b:22},abc:1111,middle:{b:1}}];
+    //Ctrl.a.list[0].list2={a:1,b:2,c:3};
+   /* console.log('===================================');
+    _viewModels.Ctrl.list=[{list2:[2],abc:2,x:{b:4}},{list2:[3,4],abc:5,x:{b:6}}]*/
+  }, false);
+
+</script>
+</html>
