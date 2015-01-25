@@ -19,9 +19,9 @@
   <ul>
     <li id="abc" xc-repeat="el in a.list">
       <div>{{el.abc}}</div>
-      <div xc-repeat="key:val in el.list2" xc-debug-2>{{key}},{{$index}},{{val|json}}{{$first}}</div>
+      <div xc-repeat="key:val in el.list2" >{{key}},{{$index}},{{val|json}}{{$first}}</div>
       <div>{{el.list2|json}}</div>
-      <div xc-repeat="key:val in el.list2" ><span >{{key}},{{val.d}},{{$last}}</span></div>
+      <div xc-repeat="key:val in el.list2" xc-debug-2><span>{{key}},{{val.d}},{{$last}}</span></div>
       <div>{{el.x.b}}</div>
     </li>
     <li class="last">end</li>
@@ -31,6 +31,9 @@
     <li xc-repeat="el in set">
       <div xc-repeat="e in el">{{e}}</div>
     </li>
+    <li xc-repeat="el in set2">
+      <div>{{el}}</div><!-- e -->
+    </li>
   </ul>
   <div xc-controller="child">{{xx}}</div>
 </div>
@@ -38,11 +41,13 @@
 <script>
   document.addEventListener("DOMContentLoaded", function () {
     console.log('===================================');
-    debugger;
-    _viewModels.Ctrl.a.list=[{list2:[{d:1},{d:2},{d:3}],x:{b:2},abc:1111,middle:{b:1}},{list2:[{d:11},{d:22},{d:33}],x:{b:22},abc:1111,middle:{b:1}}];
+    _viewModels.Ctrl.a.list=[{list2:[{d:1},{d:2},{d:3}],x:{b:2},abc:'a',middle:{b:1}},{list2:{a:{d:11},b:{d:22},c:{d:33}},x:{b:22},abc:'b',middle:{b:1}}];
     //Ctrl.a.list[0].list2={a:1,b:2,c:3};
    /* console.log('===================================');
-    _viewModels.Ctrl.list=[{list2:[2],abc:2,x:{b:4}},{list2:[3,4],abc:5,x:{b:6}}]*/
+   */
+    //_viewModels.Ctrl.list=[{list2:[2],abc:2,x:{b:4}},{list2:[3,4],abc:5,x:{b:6}}]
+
+    //_viewModels.Ctrl.set=[[1,2,3],[4,5,6]];
   }, false);
 
 </script>

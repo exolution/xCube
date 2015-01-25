@@ -41,7 +41,7 @@ function _clone(src, deep) {
 }
 
 
-var Class = function () {
+var Class = function (explicitClassName) {
     function ObjectX() {
     }//基类 在此类上扩展 防止污染Object的prototype
     ObjectX.prototype = {
@@ -209,12 +209,18 @@ var Class = function () {
 
         Parent.prototype = parent.prototype;
         var hasSuper = construct && r_super.test(construct.toString());
-        var newClass = function Class() {
-            if (!hasSuper) {
-                parent.call(this);
-            }
-            construct && construct.apply(this, _slice.call(arguments));
-        };
+        var newClass;
+        if(explicitClassName){
+            newClass=eval('(function '+(construct.name||'Class')+'() {if (!hasSuper) {parent.call(this);}construct && construct.apply(this, _slice.call(arguments));})');
+        }
+        else {
+            newClass = function Class() {
+                if (!hasSuper) {
+                    parent.call(this);
+                }
+                construct && construct.apply(this, _slice.call(arguments));
+            };
+        }
         newClass.toString = function () {
             return construct ? construct.toString() : 'function(){}';
         };
@@ -248,7 +254,7 @@ var Class = function () {
     }
 
     return Class;
-}();
+}(true);
 
 
 var xCube = {};
@@ -319,7 +325,7 @@ var directiveManager = Class(function (exports) {
 
 
 var TextEvaluator = Class({
-    $init: function (node, path) {
+    $init: function TextEvaluator(node, path) {
         this.node = node;
         this.path = path ? path + '.' : path;
     },
@@ -397,7 +403,7 @@ function _remove(dom) {
     }
 }
 var DomPosition = Class({
-    $init: function (el, placeholderId) {
+    $init: function DomPosition(el, placeholderId) {
         var parent = el.parentNode;
         var placeholder = document.createComment(placeholderId || 'placeholder');
         parent.insertBefore(placeholder, el);
@@ -475,12 +481,13 @@ directiveManager.register('repeat', function (value, el, index) {
 
         sc.positon = new DomPosition(el, _uNodeId++);
         if (!childMap[name]) {
-            sc.arrayModel = new ArrayModel(this.curContext.path + '.#.' + name);
+            sc.arrayModel = new ArrayModel(this.curContext.path + '.#.' + name,sc);
             generateArrayTree(this.curContext, [name], true);
             childMap[name] = sc.arrayModel;
         }
         else {
             sc.arrayModel = childMap[name];
+            sc.arrayModel._contextList_.push(sc);//为ArrayModel绑定多个ScopeContext 因为一个array可能对应多个scope
         }
     }
     else {//如果是顶层数组
@@ -488,7 +495,7 @@ directiveManager.register('repeat', function (value, el, index) {
         sc.prefix = prefix;
         sc.key = key;
         sc.positon = new DomPosition(el);
-        generateViewModel(this.curContext, [name + '@#']);
+        generateViewModel(this.curContext, [name + '@#'],sc);
         sc.arrayModel = _objectGet(_viewModels[this.curContext.path], name);
     }
 
@@ -499,11 +506,11 @@ directiveManager.register('repeat', function (value, el, index) {
     this.curContext = sc;
 
 });
-
+var suid=0;
 var ScopeContext = Class({
 
-    $init: function (path, parent, el, type) {
-
+    $init: function $ScopeContext(path, parent, el, type) {
+        this.id=suid++;
         this.path = path;
         this.parent = parent;
         if (parent) {
@@ -518,7 +525,7 @@ var ScopeContext = Class({
             this.nodeMap = [];
             this.env = {};
         }
-        (ScopeContext.map[path] || (ScopeContext.map[path] = [])).push(this);
+        //(ScopeContext.map[path] || (ScopeContext.map[path] = [])).push(this);
     },
     getVal: function (name) {
         if (this.env && this.env.hasOwnProperty(name)) {
@@ -526,7 +533,7 @@ var ScopeContext = Class({
         }
         if (this.type == ScopeType.Collection) {
             var base = this.parent.getVal(this.name);
-            if (name == this.prefix) {
+            if (name == this.prefix||name=='@') {
                 if (base[this.env.$key].hasOwnProperty('@')) {
                     return base[this.env.$key]['@'];
                 }
@@ -556,31 +563,6 @@ var ScopeContext = Class({
             }
             this.nodeMap.splice(index, length - index);
         }
-    },
-    'map': {},
-    '@find': function (path) {
-        console.log('find path===========',path);
-        var resolvedPath=path.replace(/\.\{[^}]+\}\./g, '.').replace(/\.(\d+|@)$/, '').replace(/\.{\d+}$/,'.@');
-        var scList=ScopeContext.map[resolvedPath];
-        console.log(resolvedPath,scList);
-        return scList;
-    },
-    '@applyEnv': function (scList, env) {
-        for (var i = 0; scList && i < scList.length; i++) {
-            scList[i].env = {
-                $index: env.$index,
-                $first: env.$first,
-                $last: env.$last,
-                $key:env.$key
-            };
-            scList[i].env[scList[i].key] = env.$key;
-        }
-    },
-    '@cloneEnv':function(scList){
-        var env=_clone(scList[0].env);
-        env.$key=env[scList[0].key];
-        return env;
-
     }
 });
 
@@ -597,7 +579,7 @@ function _findVarName(curContext, varName, evaluator) {
 var _attrNameNodeId = 'xc-field-id-' + _expendo;
 
 var ObjectModel = Class({
-    $init: function (properties, path, data, arrayScopes) {
+    $init: function ObjectModel(properties, path, data, arrayScopes) {
         this._model_ = {};
         this._path_ = path;
         this.addProperties(properties, arrayScopes);
@@ -612,7 +594,7 @@ var ObjectModel = Class({
             this['@'] = data;
         }
     },
-    addProperties: function (properties, arrayScopes) {
+    addProperties: function (properties, arrayScopes,collectionScope) {
         if (typeof properties == 'string') {
             var props = properties.split(',');
 
@@ -649,7 +631,7 @@ var ObjectModel = Class({
                         this[prop] = arrayScopes[prop].clone(this._path_ + '.' + prop);
                     }
                     else {
-                        this[prop] = new ArrayModel(this._path_ + '.' + prop);
+                        this[prop] = new ArrayModel(this._path_ + '.' + prop,collectionScope);
                     }
                 }
                 else if (type == 2) {//如果该属性是一个对象赋予null初始值 并且阻止后续的赋初值
@@ -689,17 +671,24 @@ var ObjectModel = Class({
     }
 });
 var ArrayModel = Class({
-    $init: function (path) {
+    $init: function ArrayModel(path,context) {
         this._childMap_ = {};
         this._model_ = {length: 0};
         this._path_ = path;
         this.length = 0;
+        this._contextList_=[context];
     },
     clone: function (path) {
         var newly = new ArrayModel(path || this._path_);
         newly._tree_ = this._tree_;
         newly._childMap_ = this._childMap_;
+        newly._contextList_=this._contextList_;
         return newly;
+    },
+    bindEnv:function(env){
+        for(var i=0;i<this._contextList_.length;i++){
+            this._contextList_[i].env=env;
+        }
     },
     apply: function (index, data) {
         if (this._model_.hasOwnProperty(index)) {
@@ -790,7 +779,7 @@ var ArrayModel = Class({
 });
 function buildVarMap(curContext, evaluator, index) {//当前Node属于第几个儿子
     var varList = [];//用于生成viewmodel的属性名列表
-    evaluator.curContext = curContext;
+    evaluator.context = curContext;
     if (curContext.type == ScopeType.Collection) {
         if (evaluator.node.nodeType == Node.TEXT_NODE) {
             var id = evaluator.node.parentNode.getAttribute(_attrNameNodeId);
@@ -971,7 +960,7 @@ function _objectGet(root, path) {
     return cur;
 }
 var _viewModels = {};
-function generateViewModel(ctx, varList) {
+function generateViewModel(ctx, varList,collectionScope) {
     if (varList.length > 0) {
         var path = ctx.path;
         var root = _viewModels;
@@ -1001,7 +990,7 @@ function generateViewModel(ctx, varList) {
                 if (tree[i].hasOwnProperty(k)) {
                     if (k == '') {
                         if (root[path]) {
-                            root[path].addProperties(tree[i][k]);
+                            root[path].addProperties(tree[i][k],null,collectionScope);
                         }
                         else {
                             root[path] = new ObjectModel(tree[i][k], path);
@@ -1011,7 +1000,7 @@ function generateViewModel(ctx, varList) {
                     else {
                         if (root[path][k]) {
 
-                            root[path][k].addProperties(tree[i][k]);
+                            root[path][k].addProperties(tree[i][k],null,collectionScope);
                         }
                         else {
                             _objectSet(root[path], k, new ObjectModel(tree[i][k], path + '.' + k));
@@ -1043,37 +1032,37 @@ function _applyObject(target, data, path) {
 
 function _applyArray(target, data, path) {
     var oldLength=target.length;
-    var scList=ScopeContext.find(path);
     if (typeOf(data) == 'array' || (data.splice && data.jquery)) {
+        target.bindEnv({
+            $firstKey:0,
+            $lastKey:data.length-1
+        });
         for (var i = 0; i < data.length; i++) {
-            _curEnv={
-                $first:i == 0,
-                $last:i == data.length - 1,
-                $index:i,
-                $key:i
-            };
-            console.log('saveEnv',path);
-            ScopeContext.applyEnv(scList,_curEnv);
+
+
             target.apply(i, data[i]);
         }
     }
     else if (typeOf(data) == 'object') {
         var count = 0, lastKey, firstKey = null;
+        var keyIndex={},c=0;
         for (var key in data) {
-            if (firstKey === null) {
-                firstKey = key;
+            if(data.hasOwnProperty(key)) {
+                if (firstKey === null) {
+                    firstKey = key;
+                }
+                keyIndex[key]=c++;
+                lastKey = key;
             }
-            lastKey = key;
         }
+        target.bindEnv({
+            $firstKey:firstKey,
+            $lastKey:lastKey,
+            $keyIndex:keyIndex
+        });
         for (key in data) {
             if (data.hasOwnProperty(key)) {
-                _curEnv={
-                    $first:key == firstKey,
-                    $last:key == lastKey,
-                    $index:count++,
-                    $key:key
-                };
-                ScopeContext.applyEnv(scList,_curEnv);
+
                 target.apply(key, data[key]);
             }
         }
@@ -1130,43 +1119,54 @@ function _propertySetter(name, val,isIndex) {
 
 Notification.registerSubscriber('setter', function (path, newVal, oldVal) {
     if (this.type == 'setter:object') {
-        console.debug('[' + this.msgId + ']' + this.type, 'path:', path, 'newVal', newVal, 'oldVal', oldVal);
+        //console.debug('[' + this.msgId + ']' + this.type, 'path:', path, 'newVal', newVal, 'oldVal', oldVal);
     }
     else {
-        console.log('[' + this.msgId + ']' + this.type, 'path:', path, 'newVal', newVal, 'oldVal', oldVal);
+        //console.log('[' + this.msgId + ']' + this.type, 'path:', path, 'newVal', newVal, 'oldVal', oldVal);
     }
 
 });
 var CollectionEvaluator = Class({
-    $init: function (context) {
+    $init: function CollectionEvaluator(context) {
         this.context = context;
     },
-    evaluate: function (index, path, ctx) {
+    evaluate: function (index, path,indexPath) {//indexPath一路走过来的索引路径
+        console.error('=====',path);
         var nodeMap = this.context.nodeMap;
-        var $index=this.context.env.$index;
-        if (!nodeMap[$index]) {
-            nodeMap[$index] = {key:index,nodes:{}};
+        if(isFinite(index)){
+            this.context.env.$index=index;
+        }
+        else{
+            this.context.env.$index=this.context.env.$keyIndex[index];
+        }
+        this.context.env.$key=index;
+        this.context.env.$first=this.context.env.$firstKey==index;
+        this.context.env.$last=this.context.env.$lastKey==index;
+        this.context.env[this.context.key]=index;
+        this.context.env.indexPath=indexPath+index;
+        if (!nodeMap[indexPath+index]) {
+            nodeMap[indexPath+index] = {key:index,nodes:{}};
             var newNodes = this.context.node.cloneNode(true);
-            nodeMap[$index].root=newNodes;
-            _buildClone(newNodes, nodeMap[$index].nodes);
+            nodeMap[indexPath+index].root=newNodes;
+            _buildClone(newNodes, nodeMap[indexPath+index].nodes);
             if (this.context.parent.type == ScopeType.Collection) {
-                this.context.positon.insert(newNodes, this.context.parent.nodeMap[this.context.parent.env.$index].nodes)
+                this.context.positon.insert(newNodes, this.context.parent.nodeMap[this.context.parent.env.indexPath].nodes)
             }
             else {
                 this.context.positon.insert(newNodes);
             }
         }
         else{
-            nodeMap[$index].key=index;
+            //nodeMap[index].key=index; //????
         }
         var pathInfo = PathUtils.divide(path||'@');
         var evaluators = this.context.varMap[pathInfo[0]];
         for (var i = 0; evaluators && i < evaluators.length; i++) {
             if(evaluators[i] instanceof CollectionEvaluator){
-                evaluators[i].evaluate(pathInfo[1], pathInfo[2], this.context);
+                evaluators[i].evaluate(pathInfo[1], pathInfo[2],indexPath+index+'.');
             }
             else{
-                evaluators[i].evaluate($index, pathInfo[2], this.context);
+                evaluators[i].evaluate(index, indexPath+index);
             }
 
         }
@@ -1178,22 +1178,22 @@ var PathUtils = Class(function (exports) {
     var r_division = /(?:\.|^)(\{[^}]+\})(?:\.|$)/;
     exports.divide = function (path) {
         var paths=path.split(r_division);
-        return [paths[0], paths[1]&&paths[1].replace(/^{|}$/g,''), paths.slice(2).join('.').replace(/\.$/,'')];
+        return [paths[0]||'@', paths[1]&&paths[1].replace(/^{|}$/g,''), paths.slice(2).join('.').replace(/\.$/,'')];
     }
 });
 
 var FieldEvaluator = Class({
-    $init: function (node, express, setter) {
+    $init: function FieldEvaluator(node, express, setter) {
         this.express = express;
         this.node = node;
         this.setter = setter;
         this.textEvaluator = new TextEvaluator(node);
         this.varMap = this.textEvaluator.compile(express);//编译TextEvaluator
     },
-    evaluate: function (index) {
+    evaluate: function (index,indexPath) {
         if (this.nodeId) {
             var ids = this.nodeId.split(':');
-            var node = this.curContext.nodeMap[index].nodes[ids[0]];
+            var node = this.context.nodeMap[indexPath].nodes[ids[0]];
             if (ids.length > 1) {
                 node = node.childNodes[ids[1]];
             }
@@ -1202,7 +1202,7 @@ var FieldEvaluator = Class({
             node = this.node;
         }
         try {
-            this.setter(node, this.textEvaluator.evaluate(this.curContext, node));
+            this.setter(node, this.textEvaluator.evaluate(this.context, node));
         } catch (e) {
             console.error(e);
         }
@@ -1214,7 +1214,7 @@ var ControllerEvaluator = Class(function (exports) {
 
         var evaluators = ctx.varMap[pathInfo[0]];
         for (var i = 0; i < evaluators.length; i++) {
-            evaluators[i].evaluate(pathInfo[1], pathInfo[2], ctx);
+            evaluators[i].evaluate(pathInfo[1], pathInfo[2], '');
         }
     }
 });
@@ -1229,9 +1229,8 @@ var ControllerEvaluator = Class(function (exports) {
 var messageManager = Class(function (exports) {
     var messageList = {}, messageStack = [];
     exports.push = function (id) {
-        console.error('push',id);
         messageStack.push(id);
-        if(id=='Ctrl.a.list')debugger;
+        //if(id=='Ctrl.a.list')debugger;
     };
     exports.add = function (id, callback, args) {
         if (!messageList[id]) {
@@ -1266,24 +1265,16 @@ var messageManager = Class(function (exports) {
         listeners.push(listener);
     }
 });
-function _evaluate(path,env) {
-    console.warn('_evaluate!!!!!!!!',path,env);
-    if(env){
-        var scList = ScopeContext.find(path);
-        ScopeContext.applyEnv(scList,env);
-    }
-    if(path=='Ctrl.a.list.{0}.list2.{0}.d')debugger;
+function _evaluate(path) {
+    console.warn('_evaluate!!!!!!!!',path);
+
+    //if(path=='Ctrl.a.list.{0}.list2.{0}.d')debugger;
     var ctrlName = path.substr(0, path.indexOf('.'));
     path = path.slice(path.indexOf('.') + 1);
     ControllerEvaluator.evaluate(_controllerMap[ctrlName], path);
 }
 Notification.registerSubscriber('setter:object', function (path, newVal, oldVal) {
-    var scList=ScopeContext.find(path);
     var args=[path];
-
-    if(scList&&scList[0].type==ScopeType.Collection){
-        args.push(ScopeContext.cloneEnv(scList));
-    }
     messageManager.add(path, _evaluate, args);
 
 });
