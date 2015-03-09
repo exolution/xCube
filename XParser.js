@@ -1,5 +1,5 @@
 /**
- * XParser Node端 MVVM（目前针对avalon.js）模板渲染引擎
+ * XParser Node端 MVVM（目前针对avalon.js）模板静态渲染引擎
  * 解析指令 ms-href ms-src ms-repeat ms-controller ms-class ms-html ms-text
  * 未完成指令 ms-if ms-visible
  * 不支持过滤器 ms-attr （ms-attr-href形式需要转换成ms-href）
@@ -33,8 +33,8 @@ var EvaluatorManager = function () {
     exports.register = function (name, resolver) {
         _evaluatorList[name] = resolver;
     };
-    exports.resolve = function (name, evaluator, result, ctx) {
-        return _evaluatorList[name] && _evaluatorList[name](evaluator, result, ctx);
+    exports.resolve = function (name, evaluator, result, ctx,node) {
+        return _evaluatorList[name] && _evaluatorList[name](evaluator, result, ctx,node);
     };
     return exports;
 }();
@@ -50,13 +50,11 @@ function TextNode(text) {
     this.textContent = text;
 
 }
-TextNode.prototype.toString = function () {
-    return this.textContent;
 
-};
-TextNode.prototype.compile = function () {
+TextNode.prototype.compile = function (parentNode) {
     var splits = this.textContent.split(/{{|}}/);
     if (splits.length > 1) {
+        parentNode.html=trim(this.textContent);
         var expr = '', code = '';
         for (var i = 0; i < splits.length; i++) {
             if (i % 2 == 1) {
@@ -66,10 +64,11 @@ TextNode.prototype.compile = function () {
             else expr += splits[i].replace(/\n/g, '\\n');
         }
         expr = '"' + expr + '"';
+
         this.evaluator = {
             expr: expr,
             evaluate: new Function('ctx', code + 'return ' + expr + ';')
-        }
+        };
 
     }
 };
@@ -92,13 +91,10 @@ Context.prototype.getVal = function (name) {
     return root;
 
 };
-function render(node, ctx, isRepeat) {
+function render(node, ctx, isRepeat,parentNode) {
     if (node.textContent !== undefined) {
-        if (isRepeat) {
-            //debugger;
-        }
         if (node.evaluator) {
-            return EvaluatorManager.resolve('html', node.evaluator, null, ctx);
+            return EvaluatorManager.resolve('html', node.evaluator, null, ctx,node);
         }
         return node.textContent;
     }
@@ -142,14 +138,14 @@ function render(node, ctx, isRepeat) {
                 return html;
             }
         }
-        var result = {attributes: [], className: ''};
+        var result = {attributes: [], className: '',style:''};
         for (var i = 0; i < node.evaluators.length; i++) {
-            EvaluatorManager.resolve(node.evaluators[i].name, node.evaluators[i], result, ctx);
+            EvaluatorManager.resolve(node.evaluators[i].name, node.evaluators[i], result, ctx,node);
         }
-        html = resolveEvaluatorResult(node.body,result, isSelfClosedTag);
+        html = resolveEvaluatorResult(node,result, isSelfClosedTag);
         if (result.innerHTML === undefined) {
             for (i = 0; i < node.childNodes.length; i++) {
-                html += render(node.childNodes[i], ctx, isRepeat);
+                html += render(node.childNodes[i], ctx, isRepeat,node);
             }
         }
         if (!isSelfClosedTag) {
@@ -161,18 +157,18 @@ function render(node, ctx, isRepeat) {
 }
 
 
-
+var re_tagclose=/\/?>$/;
 function _parse(html) {
     var tagSniper = /<([\w:.-]+)(\s+[\w.-]+\s*=\s*('|").*?\3)*\s*\/?>|<\/([\w:.-]+)\s*>/g;
     var result, root = [], curNode, nodeStack = [], lastIndex = 1;
-
     function _bindNode(node) {
         if (nodeStack.length > 0) {
             var parent = nodeStack[nodeStack.length - 1];
             parent.childNodes.push(node);
             if (node.textContent !== undefined && parent.tagName != 'script') {
-                node.compile();
+                node.compile(parent);
             }
+
             /*if(node.exprInfo){
              parent.text=node.exprInfo;
              parent.evaluator.push('text');
@@ -189,19 +185,17 @@ function _parse(html) {
                 lastIndex = 0;
             }
             var textNode = new TextNode(html.substring(lastIndex, tagSniper.lastIndex - result[0].length));
-
             _bindNode(textNode);
         }
 
         if (result[4] === undefined) {
             var tagName = result[1];
             curNode = new Node(tagName, result[0]);
-            if (_selfClosedTag[tagName.toLowerCase()]) {
-                curNode.body = curNode.body.slice(0, -2);
+            curNode.body = curNode.body.replace(re_tagclose,'');
+            if (_selfClosedTag[curNode.tagName]) {
                 _bindNode(curNode);
             }
             else {
-                curNode.body = curNode.body.slice(0, -1);
                 nodeStack.push(curNode);
             }
 
@@ -217,7 +211,6 @@ function _parse(html) {
                 _bindNode(curNode);
             }
         }
-
         lastIndex = tagSniper.lastIndex;
     }
     if (lastIndex < html.length) {
@@ -232,13 +225,23 @@ function _parse(html) {
 
 if (typeof exports !== 'undefined') {
     exports.parse = _parse;
-    exports.render = render;
-    exports.Context = Context;
+    exports._render = render;
+    exports.Context=Context;
+    exports.render=function(srcHtml,data){
+        Context.model=data;
+        var dom=_parse(srcHtml);
+        var dstHtml='';
+        dom.forEach(function(node){
+            dstHtml+=render(node,null);
+        });
+        return dstHtml;
+    }
 }
 
 //region 工具函数区
-var _needResolveDirective = boolObject('html,text,src,href,repeat');
-var avalonSniper = /ms-(\w+)(-\w+)*\s*=\s*('|")(.+?)\3/g;//抓取ms指令正则
+var _needResolveDirective = boolObject('html,text,src,href,repeat,css');
+var _needFixCss=boolObject('width,height,font-size,top,left,right,bottom');
+var avalonSniper = /ms-(\w+)((?:-\w+)*)\s*=\s*('|")(.+?)\3/g;//抓取ms指令正则
 function resolveAvalonDirective(node, body) {
     var result, code = '';
     while (result = avalonSniper.exec(body)) {
@@ -300,20 +303,34 @@ function resolveAvalonDirective(node, body) {
     }
 
 }
-
-function resolveEvaluatorResult(body,result, isSelfClosedTag) {
-    var html = body;
+var origClassName,origStyle,re_class=/ class=('|")(.+?)\1/g,re_style=/ style=('|")(.+?)\1/g; //很不优雅的方式 但是为了效率
+function _classReplacer(m,a,b){
+    origClassName+=b+' ';
+    return '';
+}
+function _styleReplacer(m,a,b){
+    origStyle+=b+';';
+    return '';
+}
+function resolveEvaluatorResult(node,result, isSelfClosedTag) {
+    var html = node.body;
     if (result.className.length > 0) {
-        /*html=html.replace(/ class=('|")(.+?)\1/,function(m,a,b){
-            return ' class="'+b+' '+result.className.slice(0, -1);
-        });*/
-        html += ' class="' + result.className.slice(0, -1) + '"';
+        origClassName='';
+        html=html.replace(re_class,_classReplacer);
+        html += ' class="' + origClassName+result.className.slice(0, -1) + '"';
     }
     for (var i = 0; i < result.attributes.length; i++) {
         var attribute = result.attributes[i];
         html += ' ' + attribute.name + '="' + attribute.value + '"';
     }
-
+    if(result.style.length>0){
+        origStyle='';
+        html=html.replace(re_style,_styleReplacer);
+        html+= ' style="'+origStyle+result.style+'"';
+    }
+    if(node.html){
+        html+=' ms-html="'+node.html+'"';
+    }
     if (isSelfClosedTag) {
         html += '/>';
         return html;
@@ -330,8 +347,8 @@ function resolveEvaluatorResult(body,result, isSelfClosedTag) {
 }
 var re_quote = /('|").*?\1/g, re_trans = /\\'|\\"/g, re_operator = /[,+*\/%|&~!()<>:?=-]/, re_idt = /^\s*[a-zA-Z_$]\w*/;
 var _exprCache = {};
-var _nonVarsWord = boolObject('Math');//fixme 需要补充
-function resolveExpr(expr) {
+var _nonVarsWord = boolObject('Math,true,false,instanceof,new,null');//fixme 需要补充
+function resolveExpr(expr) {//fixme 需要完善
     var code = '';
     expr = trim(expr);
     if (_exprCache[expr]) {
@@ -349,6 +366,9 @@ function resolveExpr(expr) {
     _exprCache[expr] = code;
     return code;
 }
+function handleError(e){
+    throw e;
+}
 //endregion
 
 //region 指令解析器定义区
@@ -357,16 +377,19 @@ EvaluatorManager.register('text', function (evaluator, result, ctx) {
     try {
         ret = evaluator.evaluate(ctx);
     } catch (e) {
+        handleError(e);
     }
     ret = ret.replace(re_gt, '&gt;').replace(re_lt, '&lt;');
     if (result)result.innerHTML = ret;
     return ret;
 });
-EvaluatorManager.register('html', function (evaluator, result, ctx) {
+EvaluatorManager.register('html', function (evaluator, result, ctx,node) {
     var ret = '';
     try {
         ret = evaluator.evaluate(ctx);
     } catch (e) {
+        //console.log(node);
+        //handleError(e);
     }
     if (result)result.innerHTML = ret;
     return ret;
@@ -376,6 +399,7 @@ EvaluatorManager.register('href', function (evaluator, result, ctx) {
     try {
         ret = evaluator.evaluate(ctx);
     } catch (e) {
+        handleError(e);
     }
     result.attributes.push({name: 'href', value: ret});
 });
@@ -384,6 +408,7 @@ EvaluatorManager.register('src', function (evaluator, result, ctx) {
     try {
         ret = evaluator.evaluate(ctx);
     } catch (e) {
+        handleError(e);
     }
     result.attributes.push({name: 'src', value: ret});
 });
@@ -396,21 +421,22 @@ EvaluatorManager.register('class', function (evaluator, result, ctx) {
         try {
             ret = evaluator.evaluate(ctx);
         } catch (e) {
+            handleError(e);
         }
         if (ret) {
             result.className += evaluator.args + ' ';
         }
     }
 });
-
 EvaluatorManager.register('visible', function (evaluator, result, ctx) {
     var ret = false;
     try {
         ret = evaluator.evaluate(ctx);
     } catch (e) {
+        handleError(e);
     }
     if (ret) {
-        result.attributes.push({name: 'style', value: 'display:none'});
+        result.style+='display:none;';
     }
 });
 EvaluatorManager.register('if', function (evaluator, result, ctx) {
@@ -418,9 +444,24 @@ EvaluatorManager.register('if', function (evaluator, result, ctx) {
     try {
         ret = evaluator.evaluate(ctx);
     } catch (e) {
+        handleError(e);
     }
     if (ret) {
-        result.attributes.push({name: 'style', value: 'display:none'});
+        result.style+='display:none;';
     }
+});
+EvaluatorManager.register('css', function (evaluator, result, ctx) {
+    var ret = '';
+    try {
+        ret = evaluator.evaluate(ctx);
+    } catch (e) {
+        //console.log(node);
+        //handleError(e);
+    }
+    var styleName=evaluator.args.slice(1);
+    if(_needFixCss[styleName]){
+        ret+='px';
+    }
+    result.style+=styleName+':'+ret+';';
 });
 //endregion
