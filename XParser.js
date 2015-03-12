@@ -1,6 +1,6 @@
 /**
  * XParser Node端 MVVM（目前针对avalon.js）模板静态渲染引擎
- * 解析指令 ms-href ms-src ms-repeat ms-controller ms-class ms-html ms-text
+ * 解析指令 ms-href ms-src ms-repeat ms-controller ms-class ms-html ms-text ms-if ms-visible
  * 不支持过滤器 ms-attr （ms-attr-href形式需要转换成ms-href）
  * @author godsong
  * @version 1.0
