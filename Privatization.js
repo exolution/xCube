@@ -32,6 +32,8 @@ udata.show();
 function factory() {
     var module = {};
     void function(module) {
+
+        ///////////////////////////////////
         var merge = function(dest, src) {
             for(var k in src) {
                 if(src.hasOwnProperty(k)) {
@@ -94,6 +96,7 @@ function factory() {
                 return instance;
             }
         }
+    ///////////////////////////////////
     }(module);
     return module;
 }
