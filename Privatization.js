@@ -28,20 +28,37 @@ var Privatization = function() {
         }
         privates = privates.split(',');
         return function() {
-            var proxyedPrototype = {};
+            var proxyedPrototype = {};//prototype代理
             forEach(prototype, function(methodName, method) {
-                proxyedPrototype[methodName] = function() {
-                    var args = slice.call(arguments);
-                    method.apply(realInstance, args);
+                proxyedPrototype[methodName] = function(Do,Re,Mi,Fa) {//创建每个原型方法的代理函数
+                    switch(arguments.length){
+                        case 0:
+                            return method.call(realInstance);
+                        case 1:
+                            return method.call(realInstance,Do);
+                        case 2:
+                            return method.call(realInstance,Do,Re);
+                        case 3:
+                            return method.call(realInstance,Do,Re,Mi);
+                        case 4:
+                            return method.call(realInstance,Do,Re,Mi,Fa);
+                        default:
+                            return method.apply(realInstance,slice.call(arguments));
+                    }
                 };
+                //代理函数看起来像是真的
                 proxyedPrototype[methodName].toString = function() {
                     return method.toString();
                 }
             });
+            //设置prototype
             constructor.prototype = proxyedPrototype;
+            //实例化
             var instance = new constructor();
+            //拷贝一份原始实例
             var realInstance = merge({}, instance);
-            for(var i = 0; i < privates.length; i++) { //分离私有变量和公有变量
+            //分离实例中的私有变量
+            for(var i = 0; i < privates.length; i++) {
                 delete instance[privates[i]];
             }
             return instance;
