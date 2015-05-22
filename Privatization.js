@@ -29,15 +29,16 @@ console.log(udata.db, udata.pri);//undefined undefined
 udata.show();//成员变量依然可以访问到
 udata.change();
 udata.show();
-//这种情况是非法的 虽然不会报错 私有变量db是不会被修改的
 
+
+//这种情况是非法的 虽然不会报错 私有变量db是不会被修改的
 udata.db = 123;
 //虽然此时 udata.db这样访问能访问到123
 console.log(udata.db);// 123
 //但是很明显私有的db并没有被影响
 udata.show();//{ name: 'mongoDB' }
 //但是一旦成员方法使用了该私有变量 外部的udata.db就会被清空
-console.log(udata.db);//undefine
+console.log(udata.db);//undefined
 
 
 /*代码实现区*/
