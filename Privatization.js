@@ -31,7 +31,7 @@ udata.change();
 udata.show();
 //这种情况是非法的 虽然不会报错 私有变量db是不会被修改的
 
-udata.db=123;
+udata.db = 123;
 //虽然此时 udata.db这样访问能访问到123
 console.log(udata.db);// 123
 //但是很明显私有的db并没有被影响
@@ -45,7 +45,7 @@ function factory() {
     var module = {};
     void function(module) {
 
-        ///////////////////////////////////
+        //////////////不要关心 Factory 实际代码从这开始/////////////////////
         var merge = function(dest, src) {
             for(var k in src) {
                 if(src.hasOwnProperty(k)) {
@@ -55,16 +55,18 @@ function factory() {
             return dest;
         };
         var slice = Array.prototype.slice;
-        function splitPrivateData(target,privateDefinition){
-            var privateData={};
-            for(var i=0;i<privateDefinition.length;i++){
-                if(target.hasOwnProperty(privateDefinition[i])){
-                    privateData[privateDefinition[i]]=target[privateDefinition[i]];
-                     delete target[privateDefinition[i]];
+
+        function splitPrivateData(target, privateDefinition) {
+            var privateData = {};
+            for(var i = 0; i < privateDefinition.length; i++) {
+                if(target.hasOwnProperty(privateDefinition[i])) {
+                    privateData[privateDefinition[i]] = target[privateDefinition[i]];
+                    delete target[privateDefinition[i]];
                 }
             }
             return privateData;
         }
+
         function forEach(target, callback) {
             for(var key in target) {
                 if(target.hasOwnProperty(key)) {
@@ -72,8 +74,8 @@ function factory() {
                 }
             }
         }
-
-        module.exports = function(constructor, prototype, privates) {
+        // 私有化主函数
+        module.exports = function Privatization(constructor, prototype, privates) {
 
             if(typeof prototype == 'string' && arguments.length == 2) {
                 privates = prototype;
@@ -82,33 +84,33 @@ function factory() {
             privates = privates.split(',');
             return function() {
                 var proxyedPrototype = {};//prototype代理
-                var privateData={};
+                var privateData = {};
                 forEach(prototype, function(methodName, method) {
                     proxyedPrototype[methodName] = function(Do, Re, Mi, Fa) {//创建每个原型方法的代理函数
-                        merge(instance,privateData);
+                        merge(instance, privateData);
                         var ret;
                         //因为call比apply性能高 所以尽量用call
                         switch(arguments.length) {
                             case 0:
-                                ret= method.call(instance);
+                                ret = method.call(instance);
                                 break;
                             case 1:
-                                ret= method.call(instance, Do);
+                                ret = method.call(instance, Do);
                                 break;
                             case 2:
-                                ret= method.call(instance, Do, Re);
+                                ret = method.call(instance, Do, Re);
                                 break;
                             case 3:
-                                ret= method.call(instance, Do, Re, Mi);
+                                ret = method.call(instance, Do, Re, Mi);
                                 break;
                             case 4:
-                                ret= method.call(instance, Do, Re, Mi, Fa);
+                                ret = method.call(instance, Do, Re, Mi, Fa);
                                 break;
                             default:
-                                ret= method.apply(instance, slice.call(arguments));
+                                ret = method.apply(instance, slice.call(arguments));
                                 break;
                         }
-                        privateData=splitPrivateData(instance,privates);
+                        privateData = splitPrivateData(instance, privates);
                         return this;
 
                     };
@@ -122,13 +124,13 @@ function factory() {
                 //实例化
                 var instance = new constructor();
                 //取消引用prototype防止泄露
-                constructor.prototype=null;
+                constructor.prototype = null;
                 //分离实例中的私有变量
-                privateData=splitPrivateData(instance,privates);
+                privateData = splitPrivateData(instance, privates);
                 return instance;
             }
         };
-    ///////////////////////////////////
+        ///////////////////////////////////
     }(module);
     return module.exports;
 }
